@@ -1,26 +1,32 @@
+// menuData.js
 export const menuItems = [
   {
     id: '1',
-    name: 'Paneer Butter Masala',
-    price: 180,
-    image: require('./assets/menu/Paneer.png'),
+    name: 'Veg Hakka Noodles',
+    price: 120,
+    image: require('./assets/noodles.jpg'),
+    category: 'Noodles',
   },
   {
     id: '2',
-    name: 'Veg Biryani',
-    price: 150,
-    image: require('./assets/menu/Biryani.png'),
+    name: 'Garlic Noodles',
+    price: 130,
+    image: require('./assets/garlic_noodles.jpg'),
+    category: 'Noodles',
   },
   {
     id: '3',
-    name: 'Dal Tadka',
-    price: 120,
-    image: require('./assets/menu/Dal.png'),
+    name: 'Butter Naan',
+    price: 25,
+    image: require('./assets/butter_naan.jpg'),
+    category: 'Breads',
   },
   {
     id: '4',
-    name: 'Veg Roll',
-    price: 30,
-    image: require('./assets/menu/Roll.png'),
+    name: 'Tandoori Roti',
+    price: 20,
+    image: require('./assets/tandoori_roti.jpg'),
+    category: 'Breads',
   },
+  // Add more items...
 ];

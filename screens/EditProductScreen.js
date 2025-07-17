@@ -1,73 +1,36 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, Button, StyleSheet, Alert, Image,
+  View, Text, TextInput, Button, StyleSheet, Alert,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { Picker } from '@react-native-picker/picker';
-import { v4 as uuidv4 } from 'uuid';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export default function EditProductScreen({ route, navigation }) {
   const { item } = route.params;
 
   const [name, setName]        = useState(item.name);
   const [price, setPrice]      = useState(String(item.price));
-  const [imageUri, setImageUri] = useState(item.imageUrl || '');
   const [category, setCategory] = useState(item.category || 'Uncategorized');
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission denied', 'Camera roll access is required.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
-    }
-  };
-
   const handleSave = async () => {
-    if (!name || !price || !imageUri || !category) {
-      Alert.alert('Missing fields', 'Please fill in all fields and pick an image.');
+    if (!name || !price || !category) {
+      Alert.alert('Missing fields', 'Please fill in all fields.');
       return;
     }
 
     try {
-      let finalImageUrl = imageUri;
-
-      // Upload new image if it's a local file (not already a Firebase URL)
-      if (!imageUri.startsWith('http')) {
-        const storage = getStorage();
-        const filename = `${uuidv4()}.jpg`;
-        const imgRef = ref(storage, `menuImages/${filename}`);
-
-        const resp = await fetch(imageUri);
-        const blob = await resp.blob();
-        await uploadBytes(imgRef, blob);
-
-        finalImageUrl = await getDownloadURL(imgRef);
-      }
-
       await updateDoc(doc(db, 'menuItems', item.id), {
         name,
         price: parseFloat(price),
-        imageUrl: finalImageUrl,
         category,
       });
 
-      Alert.alert('Success', 'Product updated.');
+      Alert.alert('✅ Success', 'Product updated.');
       navigation.goBack();
     } catch (error) {
       console.error('Error updating product:', error);
-      Alert.alert('Error', 'Failed to update product.');
+      Alert.alert('❌ Error', 'Failed to update product.');
     }
   };
 
@@ -111,11 +74,6 @@ export default function EditProductScreen({ route, navigation }) {
         />
       )}
 
-      <Button title="Pick New Image" onPress={pickImage} color="#2196F3" />
-      {imageUri && (
-        <Image source={{ uri: imageUri }} style={styles.preview} />
-      )}
-
       <Button title="Save Changes" onPress={handleSave} color="#4CAF50" />
     </View>
   );
@@ -134,8 +92,5 @@ const styles = StyleSheet.create({
   picker: {
     borderWidth: 1, borderColor: '#ccc', borderRadius: 8,
     marginBottom: 15, height: 45, backgroundColor: '#f9f9f9',
-  },
-  preview: {
-    width: '100%', height: 180, marginVertical: 15, borderRadius: 8,
   },
 });

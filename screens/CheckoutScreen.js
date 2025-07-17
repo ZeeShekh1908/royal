@@ -14,64 +14,70 @@ import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export default function CheckoutScreen({ route }) {
   const { item } = route.params;
   const [qty, setQty] = useState(1);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('COD'); // Default payment method
+  const [paymentMethod, setPaymentMethod] = useState('COD');
   const navigation = useNavigation();
 
   const totalPrice = item.price * qty;
 
-  const placeOrder = async () => {
-  if (!name || !phone || !address) {
-    alert('Please fill all the details.');
-    return;
-  }
-
-  const orderData = {
-    name,
-    phone,
-    address,
-    paymentMethod,
-    item,
-    qty,
-    total: totalPrice,
-    status: 'pending', // 👈 Add default status
-    createdAt: Timestamp.now(),
+  const sendAdminNotification = async () => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🛒 New Order Placed!',
+        body: `Name: ${name}\nItem: ${item.name} x${qty}\nTotal: ₹${totalPrice}`,
+        sound: 'default',
+      },
+      trigger: null,
+    });
   };
 
-  try {
-    const docRef = await addDoc(collection(db, 'orders'), orderData);
-    alert('Order placed successfully!');
-    await AsyncStorage.setItem('userPhone', phone);
-    // Navigate to status screen
-   navigation.navigate('OrderStatus', { orderId: docRef.id });
+  const placeOrder = async () => {
+    if (!name || !phone || !address) {
+      alert('Please fill all the details.');
+      return;
+    }
 
-  } catch (error) {
-    console.error('Error placing order:', error);
-    alert('Failed to place order.');
-  }
-};
+    // ✅ Sanitize item object (remove undefined imageUrl)
+    const cleanItem = {
+      name: item.name,
+      price: item.price,
+      ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
+    };
 
+    const orderData = {
+      name,
+      phone: phone.trim(),
+      address,
+      paymentMethod,
+      item: cleanItem,
+      qty,
+      total: totalPrice,
+      status: 'pending',
+      createdAt: Timestamp.now(),
+    };
 
-const sendAdminNotification = async () => {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '🛒 New Order Placed!',
-      body: `Name: ${name}\nItem: ${item.name} x${qty}\nTotal: ₹${totalPrice}`,
-      sound: 'default',
-    },
-    trigger: null, // sends immediately
-  });
-};
+    try {
+      const docRef = await addDoc(collection(db, 'orders'), orderData);
+      alert('Order placed successfully!');
+      await AsyncStorage.setItem('userPhone', phone.trim());
+      navigation.navigate('OrderStatus', { orderId: docRef.id });
+      await sendAdminNotification(); // 🔔 Notify admin
+    } catch (error) {
+      console.error('Error placing order:', error);
+      alert('Failed to place order.');
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Checkout</Text>
 
-      {/* Form Section */}
       <View style={styles.form}>
         <TextInput
           style={styles.input}
@@ -94,23 +100,16 @@ const sendAdminNotification = async () => {
           multiline
         />
 
-        {/* Payment Options */}
         <Text style={styles.label}>Payment Method</Text>
         <View style={styles.paymentOptions}>
           <TouchableOpacity
-            style={[
-              styles.option,
-              paymentMethod === 'COD' && styles.selectedOption,
-            ]}
+            style={[styles.option, paymentMethod === 'COD' && styles.selectedOption]}
             onPress={() => setPaymentMethod('COD')}
           >
             <Text style={styles.optionText}>Cash on Delivery</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.option,
-              paymentMethod === 'Online' && styles.selectedOption,
-            ]}
+            style={[styles.option, paymentMethod === 'Online' && styles.selectedOption]}
             onPress={() => setPaymentMethod('Online')}
           >
             <Text style={styles.optionText}>Pay Online</Text>
@@ -118,24 +117,21 @@ const sendAdminNotification = async () => {
         </View>
       </View>
 
-      {/* Order Summary */}
       <View style={styles.summary}>
         <Text style={styles.subheading}>Order Summary</Text>
-        <Image source={{ uri: item.imageUrl }} style={styles.image} />
-
+        {item.imageUrl && <Image source={{ uri: item.imageUrl }} style={styles.image} />}
         <Text style={styles.itemName}>{item.name}</Text>
         <Text>Price: ₹{item.price}</Text>
 
         <View style={styles.qtyRow}>
           <Button title="−" onPress={() => qty > 1 && setQty(qty - 1)} />
           <Text style={styles.qty}>{qty}</Text>
-          <Button title="+" onPress={() => setQty(qty + 1)} />
+          <Button title="+" onPress={() => qty < 10 && setQty(qty + 1)} />
         </View>
 
         <Text style={styles.total}>Total: ₹{totalPrice}</Text>
       </View>
 
-      {/* Place Order Button */}
       <Button title="Place Order" onPress={placeOrder} />
     </ScrollView>
   );
@@ -150,7 +146,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
-    marginTop:40,
+    marginTop: 40,
     textAlign: 'center',
     color: '#4CAF50',
   },

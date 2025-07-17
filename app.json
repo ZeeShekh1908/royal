@@ -4,11 +4,11 @@
     "slug": "royal-veg-corner",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/favicon.png",
+    "icon": "./assets/menu/logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "../assets/menu/logo.png",
+      "image": "./assets/menu/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,15 +19,24 @@
       }
     },
     "android": {
-      "permissions": ["READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"],
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
-        "foregroundImage": "../assets/menu/logo.png",
+        "foregroundImage": "./assets/menu/logo.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.zeenatshekh.royalvegcorner"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/menu/logo.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5e3044f8-5f2d-4901-a489-c9c4ecc2af24"
+      }
     }
   }
 }

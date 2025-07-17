@@ -42,10 +42,25 @@ export default function MyOrdersScreen() {
   }, [userPhone]);
 
   const getStatusColor = (status) =>
-  status === 'accepted' ? '#4CAF50'
-  : status === 'rejected' ? '#F44336'
-  : status === 'done'     ? '#2196F3'
-  : '#FFC107'; // pending/default
+    status === 'accepted' ? '#4CAF50'
+    : status === 'rejected' ? '#F44336'
+    : status === 'done'     ? '#2196F3'
+    : '#FFC107'; // pending/default
+
+  const getStatusMessage = (status) => {
+    switch (status) {
+      case 'accepted':
+        return '✅ Your order has been accepted';
+      case 'rejected':
+        return '❌ Your order was rejected';
+      case 'done':
+        return '🚚 Your order is on the way';
+      case 'delivered':
+        return '📦 Order delivered';
+      default:
+        return '⏳ Waiting for approval';
+    }
+  };
 
   const renderItem = ({ item }) => (
     <View style={styles.card}>
@@ -54,7 +69,7 @@ export default function MyOrdersScreen() {
       <Text style={styles.text}>Payment: {item.paymentMethod}</Text>
       <Text style={styles.text}>📍 {item.address}</Text>
       <Text style={[styles.status, { color: getStatusColor(item.status) }]}>
-        Status: {(item.status || 'pending').toUpperCase()}
+        {getStatusMessage(item.status)}
       </Text>
     </View>
   );
@@ -66,7 +81,9 @@ export default function MyOrdersScreen() {
   if (!userPhone) {
     return (
       <View style={styles.center}>
-        <Text style={styles.noOrders}>Could not find your orders. Please login or place an order first.</Text>
+        <Text style={styles.noOrders}>
+          Could not find your orders. Please login or place an order first.
+        </Text>
       </View>
     );
   }
@@ -107,6 +124,15 @@ const styles = StyleSheet.create({
   },
   itemName: { fontSize: 18, fontWeight: 'bold', marginBottom: 5 },
   text: { fontSize: 14, marginBottom: 2 },
-  status: { marginTop: 10, fontSize: 16, fontWeight: 'bold' },
-  noOrders: { textAlign: 'center', fontSize: 16, color: '#888', marginTop: 30 },
+  status: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  noOrders: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#888',
+    marginTop: 30,
+  },
 });

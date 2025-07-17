@@ -1,18 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  Alert, Image, ActivityIndicator,
+  Alert, Image, ActivityIndicator, TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase.js'; // your firebase config
-import { getStorage, ref, getDownloadURL } from 'firebase/storage';
-import { useFocusEffect } from '@react-navigation/native';
+import { db } from '../firebase';
+import { getStorage, ref, getDownloadURL, deleteObject } from 'firebase/storage';
 
 export default function AdminDashboardScreen() {
   const navigation = useNavigation();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const storage = getStorage();
 
   const fetchMenuItems = async () => {
@@ -42,13 +42,13 @@ export default function AdminDashboardScreen() {
   };
 
   useFocusEffect(
-  React.useCallback(() => {
-    fetchMenuItems();
-  }, [])
-);
+    React.useCallback(() => {
+      fetchMenuItems();
+    }, [])
+  );
 
-  const handleDelete = async (id) => {
-    Alert.alert('Delete Item', 'Are you sure you want to delete this product?', [
+  const handleDelete = async (id, imageUrl) => {
+    Alert.alert('Delete Product', 'Are you sure you want to delete this product?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -56,9 +56,15 @@ export default function AdminDashboardScreen() {
         onPress: async () => {
           try {
             await deleteDoc(doc(db, 'menuItems', id));
-            setItems((prevItems) => prevItems.filter((item) => item.id !== id));
-          } catch (err) {
-            console.error('Error deleting item:', err);
+            if (imageUrl) {
+              const imagePath = decodeURIComponent(imageUrl.split('/o/')[1].split('?')[0]);
+              const imageRef = ref(storage, imagePath);
+              await deleteObject(imageRef);
+            }
+            fetchMenuItems();
+          } catch (error) {
+            console.error('Delete failed:', error);
+            Alert.alert('Error', 'Failed to delete product');
           }
         },
       },
@@ -68,7 +74,7 @@ export default function AdminDashboardScreen() {
   const renderItem = ({ item }) => (
     <View style={styles.card}>
       <Image source={{ uri: item.imageUrl }} style={styles.image} />
-      <Text style={styles.name}>{item.name}</Text>
+      <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
       <Text style={styles.price}>₹{item.price}</Text>
 
       <View style={styles.buttonRow}>
@@ -77,18 +83,25 @@ export default function AdminDashboardScreen() {
           onPress={() =>
             navigation.navigate('EditProduct', {
               item,
-              onUpdate: fetchMenuItems, // refresh on return
+              onUpdate: fetchMenuItems,
             })
           }
         >
           <Text style={styles.buttonText}>Edit</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDelete(item.id, item.imageUrl)}
+        >
           <Text style={styles.buttonText}>Delete</Text>
         </TouchableOpacity>
       </View>
     </View>
+  );
+
+  const filteredItems = items.filter((item) =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (loading) {
@@ -104,17 +117,35 @@ export default function AdminDashboardScreen() {
       <Text style={styles.header}>Admin Dashboard</Text>
 
       <TouchableOpacity
-  style={styles.addButton}
-  onPress={() => navigation.navigate('AddProduct')}
+        style={styles.addButton}
+        onPress={() => navigation.navigate('AddProduct')}
+      >
+        <Text style={styles.addButtonText}>+ Add New Product</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+  style={styles.manageOrdersButton}
+  onPress={() => navigation.navigate('AdminOrders')}
 >
-  <Text style={styles.addButtonText}>+ Add New Product</Text>
+  <Text style={styles.manageOrdersText}>📦 Manage Orders</Text>
 </TouchableOpacity>
 
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search products..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
+
       <FlatList
-        data={items}
+        data={filteredItems}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        numColumns={2}
+        columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 10 }}
         contentContainerStyle={{ paddingBottom: 100 }}
+        ListEmptyComponent={
+          <Text style={styles.noResultsText}>No products found.</Text>
+        }
       />
     </View>
   );
@@ -142,9 +173,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  searchInput: {
+    backgroundColor: '#eee',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+    fontSize: 16,
+  },
   card: {
     backgroundColor: '#f9f9f9',
-    marginVertical: 8,
+    flexBasis: '48%',
     borderRadius: 10,
     padding: 10,
     elevation: 2,
@@ -156,8 +194,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 10,
   },
-  name: { fontSize: 18, fontWeight: 'bold' },
-  price: { fontSize: 16, color: '#777', marginVertical: 4 },
+  name: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  price: {
+    fontSize: 14,
+    color: '#777',
+    marginVertical: 4,
+  },
   buttonRow: {
     flexDirection: 'row',
     marginTop: 10,
@@ -178,5 +224,11 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  noResultsText: {
+    textAlign: 'center',
+    marginTop: 50,
+    fontSize: 16,
+    color: '#888',
   },
 });

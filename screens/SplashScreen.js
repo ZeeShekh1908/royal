@@ -1,25 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 
 export default function SplashScreen({ navigation }) {
   const [tapCount, setTapCount] = useState(0);
+  const mountedRef = useRef(false); // ✅ useRef instead of useState
 
   useEffect(() => {
+    mountedRef.current = true;
+
     const timer = setTimeout(() => {
-      if (tapCount < 5) {
+      // ✅ Use ref instead of state
+      if (tapCount < 5 && mountedRef.current) {
         navigation.replace('Menu');
       }
     }, 3000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      mountedRef.current = false;
+    };
   }, [tapCount]);
 
   const handleLogoTap = () => {
     setTapCount((prev) => {
       const newCount = prev + 1;
+
       if (newCount === 3) {
-        navigation.replace('AdminLogin'); // Navigate to admin login
+        setTimeout(() => {
+          navigation.replace('AdminLogin');
+        }, 100);
       }
+
       return newCount;
     });
   };

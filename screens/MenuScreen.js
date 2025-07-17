@@ -1,51 +1,67 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, Image, StyleSheet, SafeAreaView,
-  TouchableOpacity, ScrollView, ActivityIndicator
+  TouchableOpacity, ScrollView, ActivityIndicator, TextInput
 } from 'react-native';
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase.js'; // your firebase file
+import { db } from '../firebase';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
-import { useNavigation } from '@react-navigation/native';
-export default function MenuScreen({ route,navigation }) {
-  const storage = getStorage(); // This uses the default initialized Firebase app
- 
+import { Ionicons } from '@expo/vector-icons'; // For icons
+
+export default function MenuScreen({ route, navigation }) {
+  const storage = getStorage();
   const userPhone = route.params?.userPhone;
   const [menuItems, setMenuItems] = useState([]);
+  const [filteredItems, setFilteredItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchText, setSearchText] = useState('');
+
+ useEffect(() => {
+  const fetchMenu = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'menuItems'));
+
+      const items = await Promise.all(
+        querySnapshot.docs.map(async (docSnap) => {
+          const data = docSnap.data();
+          let imageUrl = data.imageUrl;
+
+          if (imageUrl && imageUrl.startsWith('gs://')) {
+            try {
+              const path = imageUrl.replace('gs://recipe-suggestion-app-dd270.appspot.com/', '');
+              const imageRef = ref(storage, path);
+              imageUrl = await getDownloadURL(imageRef);
+            } catch (err) {
+              console.warn('Failed to fetch image:', err.message);
+              imageUrl = null; // fallback to null if image load fails
+            }
+          }
+
+          return { id: docSnap.id, ...data, imageUrl };
+        })
+      );
+
+      setMenuItems(items);
+      setFilteredItems(items);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching menu:', error);
+      setLoading(false);
+    }
+  };
+
+  fetchMenu();
+}, []);
+  
 
   useEffect(() => {
-    const fetchMenu = async () => {
-  try {
-    const querySnapshot = await getDocs(collection(db, 'menuItems'));
-    const items = [];
+    const filtered = menuItems.filter(item =>
+      item.name.toLowerCase().includes(searchText.toLowerCase())
+    );
+    setFilteredItems(filtered);
+  }, [searchText, menuItems]);
 
-    for (const doc of querySnapshot.docs) {
-      const data = doc.data();
-      let imageUrl = data.imageUrl;
-
-      // If imageUrl is a gs:// path, convert it
-      if (imageUrl.startsWith('gs://')) {
-        const path = imageUrl.replace('gs://recipe-suggestion-app-dd270.appspot.com/', '');
-        const imageRef = ref(storage, path);
-        imageUrl = await getDownloadURL(imageRef);
-      }
-
-      items.push({ id: doc.id, ...data, imageUrl });
-    }
-
-    setMenuItems(items);
-    setLoading(false);
-  } catch (error) {
-    console.error('Error fetching menu:', error);
-    setLoading(false);
-  }
-};
-
-    fetchMenu();
-  }, []);
-
-  const groupedItems = menuItems.reduce((acc, item) => {
+  const groupedItems = filteredItems.reduce((acc, item) => {
     const category = item.category || 'Uncategorized';
     acc[category] = acc[category] || [];
     acc[category].push(item);
@@ -76,16 +92,28 @@ export default function MenuScreen({ route,navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Text style={styles.header}>Royal Veg Corner Menu</Text>
-        {/* <TouchableOpacity
-        style={styles.myOrdersButton}
-        onPress={() => navigation.navigate('MyOrders', { userPhone})}
+      {/* Header Row */}
+      <View style={styles.topBar}>
+        <Text style={styles.header}>Royal Veg Corner</Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('MyOrders', { userPhone })}
+        >
+          <Ionicons name="receipt-outline" size={28} color="#4CAF50" />
+        </TouchableOpacity>
+      </View>
 
-      >
-        <Text style={styles.myOrdersText}>📦 View My Orders</Text>
-      </TouchableOpacity> */}
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#777" style={{ marginRight: 8 }} />
+        <TextInput
+          placeholder="Search for dishes..."
+          value={searchText}
+          onChangeText={setSearchText}
+          style={styles.searchInput}
+        />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
         {Object.keys(groupedItems).map((category) => (
           <View key={category} style={styles.categorySection}>
             <Text style={styles.categoryTitle}>{category}</Text>
@@ -105,68 +133,97 @@ export default function MenuScreen({ route,navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: 'rgba(240, 226, 215, 1)' },
   scrollContainer: { paddingBottom: 20 },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  topBar: {
+    marginTop:30,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 5,
+  },
   header: {
-    fontSize: 24,
+    
+    fontSize: 22,
     fontWeight: 'bold',
-    marginVertical: 30,
-    textAlign: 'center',
     color: '#4CAF50',
   },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  categorySection: { marginBottom: 30 },
+
+  searchContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f2f2f2',
+    marginHorizontal: 16,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+  },
+
+  categorySection: { marginBottom: 25 },
   categoryTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 15,
-    marginBottom: 10,
-    color: '#333',
+    marginVertical: 10,
+    color: '#444',
   },
+
   gridContainer: {
-  paddingHorizontal: 10,
-  justifyContent: 'space-between',
-},
-
- card: {
-  flex: 1,
-  margin: 5,
-  backgroundColor: '#f9f9f9',
-  borderRadius: 12,
-  overflow: 'hidden',
-  elevation: 3,
-  alignItems: 'center',
-  padding: 10,
-  maxWidth: '48%',
-},
-
+    paddingHorizontal: 10,
+    justifyContent: 'space-between',
+  },
+  card: {
+    flex: 1,
+    margin: 5,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    overflow: 'hidden',
+    elevation: 4,
+    alignItems: 'center',
+    padding: 12,
+    maxWidth: '48%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
   image: {
-    width: 100,
-    height: 100,
+    width: 110,
+    height: 110,
     resizeMode: 'cover',
-    borderRadius: 8,
+    borderRadius: 10,
   },
   name: {
     fontSize: 16,
     fontWeight: '600',
     marginTop: 8,
     textAlign: 'center',
+    color: '#333',
   },
   price: {
     fontSize: 14,
-    color: '#777',
-    marginVertical: 5,
+    color: '#888',
+    marginVertical: 4,
   },
   button: {
     backgroundColor: '#4CAF50',
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginTop: 5,
+    paddingHorizontal: 14,
+    borderRadius: 25,
+    marginTop: 6,
   },
   buttonText: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontWeight: '600',
     fontSize: 14,
   },
 });

@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import Splash from './screens/SplashScreen';
+// import AdminOrdersScreen from './screens/AdminOrdersScreen';
 import Menu from './screens/MenuScreen';
 import CheckoutScreen from './screens/CheckoutScreen';
 import AdminLoginScreen from './screens/AdminLoginScreen';
@@ -58,6 +59,9 @@ export default function App() {
  <Stack.Screen name="Admin" component={AdminScreen} />
 <Stack.Screen name="AddProduct" component={AddProductScreen} />
 <Stack.Screen name="EditProduct" component={EditProductScreen} />
+
+{/* <Stack.Screen name="AdminOrders" component={AdminOrdersScreen} /> */}
+
 
 
       </Stack.Navigator>
