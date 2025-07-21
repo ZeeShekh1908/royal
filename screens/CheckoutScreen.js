@@ -159,6 +159,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     marginBottom: 10,
+    color:'#0f0e0eff'
   },
   label: {
     fontWeight: 'bold',

@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function AdminLoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
 
-  const handleLogin = () => {
+  // Check if already logged in
+  useEffect(() => {
+    const checkLoginStatus = async () => {
+      const isAdmin = await AsyncStorage.getItem('isAdmin');
+      if (isAdmin === 'true') {
+        navigation.replace('Admin');
+      }
+    };
+    checkLoginStatus();
+  }, []);
+
+  const handleLogin = async () => {
     if (password === 'admin123') {
-      navigation.replace('Admin'); // Use replace so admin can't go back to login
+      await AsyncStorage.setItem('isAdmin', 'true'); // Save login status
+      navigation.replace('Admin'); // Go to Admin screen
     } else {
       Alert.alert('Access Denied', 'Incorrect password. Try again.');
     }

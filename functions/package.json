@@ -1,0 +1,21 @@
+{
+  "name": "functions",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "firebase-functions": "^4.4.1",
+"firebase-admin": "^11.11.1",
+
+    "node-fetch": "^2.6.11"
+  },
+  "engines": {
+    "node": "20"
+  }
+}

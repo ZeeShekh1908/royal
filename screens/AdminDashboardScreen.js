@@ -1,24 +1,104 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   Alert, Image, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import {
+  collection, getDocs, deleteDoc, doc, onSnapshot, addDoc,
+} from 'firebase/firestore';
 import { db } from '../firebase';
 import { getStorage, ref, getDownloadURL, deleteObject } from 'firebase/storage';
+import { Audio } from 'expo-av';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 
 export default function AdminDashboardScreen() {
   const navigation = useNavigation();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [lastOrderId, setLastOrderId] = useState(null);
   const storage = getStorage();
 
+  // 🔔 Register for push notifications
+  useEffect(() => {
+    const register = async () => {
+      if (!Device.isDevice) {
+        alert('Must use physical device for push notifications');
+        return;
+      }
+
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== 'granted') {
+        alert('Failed to get push notification permission');
+        return;
+      }
+
+      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const token = tokenData.data;
+
+      if (token) {
+        try {
+          await addDoc(collection(db, 'adminTokens'), {
+            token,
+            createdAt: new Date(),
+          });
+        } catch (err) {
+          console.error('Saving token failed:', err);
+        }
+      }
+    };
+
+    register();
+  }, []);
+
+  // 🔁 Listen for new orders and play bell
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'orders'), async (snapshot) => {
+      const added = snapshot.docChanges().filter(change => change.type === 'added');
+
+      if (added.length > 0) {
+        const latest = added[0].doc;
+        if (!lastOrderId || latest.id !== lastOrderId) {
+          await playBell();
+          setLastOrderId(latest.id);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [lastOrderId]);
+
+  // 🔊 Bell Sound
+  const playBell = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('../assets/telephone-ring.wav')
+      );
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (err) {
+      console.error('Bell play failed:', err);
+    }
+  };
+
+  // 📦 Fetch menu items
   const fetchMenuItems = async () => {
     try {
       const querySnapshot = await getDocs(collection(db, 'menuItems'));
-      const itemList = [];
+      const list = [];
 
       for (const docSnap of querySnapshot.docs) {
         const data = docSnap.data();
@@ -30,13 +110,13 @@ export default function AdminDashboardScreen() {
           imageUrl = await getDownloadURL(imageRef);
         }
 
-        itemList.push({ id: docSnap.id, ...data, imageUrl });
+        list.push({ id: docSnap.id, ...data, imageUrl });
       }
 
-      setItems(itemList);
+      setItems(list);
       setLoading(false);
-    } catch (error) {
-      console.error('Error fetching items:', error);
+    } catch (err) {
+      console.error('Menu fetch failed:', err);
       setLoading(false);
     }
   };
@@ -48,7 +128,7 @@ export default function AdminDashboardScreen() {
   );
 
   const handleDelete = async (id, imageUrl) => {
-    Alert.alert('Delete Product', 'Are you sure you want to delete this product?', [
+    Alert.alert('Confirm Delete', 'Delete this product?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -57,13 +137,13 @@ export default function AdminDashboardScreen() {
           try {
             await deleteDoc(doc(db, 'menuItems', id));
             if (imageUrl) {
-              const imagePath = decodeURIComponent(imageUrl.split('/o/')[1].split('?')[0]);
-              const imageRef = ref(storage, imagePath);
+              const path = decodeURIComponent(imageUrl.split('/o/')[1].split('?')[0]);
+              const imageRef = ref(storage, path);
               await deleteObject(imageRef);
             }
             fetchMenuItems();
-          } catch (error) {
-            console.error('Delete failed:', error);
+          } catch (err) {
+            console.error('Delete error:', err);
             Alert.alert('Error', 'Failed to delete product');
           }
         },
@@ -76,7 +156,6 @@ export default function AdminDashboardScreen() {
       <Image source={{ uri: item.imageUrl }} style={styles.image} />
       <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
       <Text style={styles.price}>₹{item.price}</Text>
-
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={styles.editButton}
@@ -89,7 +168,6 @@ export default function AdminDashboardScreen() {
         >
           <Text style={styles.buttonText}>Edit</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.deleteButton}
           onPress={() => handleDelete(item.id, item.imageUrl)}
@@ -100,7 +178,7 @@ export default function AdminDashboardScreen() {
     </View>
   );
 
-  const filteredItems = items.filter((item) =>
+  const filteredItems = items.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -122,12 +200,6 @@ export default function AdminDashboardScreen() {
       >
         <Text style={styles.addButtonText}>+ Add New Product</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-  style={styles.manageOrdersButton}
-  onPress={() => navigation.navigate('AdminOrders')}
->
-  <Text style={styles.manageOrdersText}>📦 Manage Orders</Text>
-</TouchableOpacity>
 
       <TextInput
         style={styles.searchInput}

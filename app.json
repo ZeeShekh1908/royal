@@ -12,6 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+     "notification": {
+    "sounds": ["telephone-ring.wav"]
+  },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
