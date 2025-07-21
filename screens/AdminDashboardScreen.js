@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  Alert, Image, ActivityIndicator, TextInput,
+  Alert, Image, ActivityIndicator, TextInput, Platform,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
-  collection, getDocs, deleteDoc, doc, onSnapshot, addDoc,
+  collection, getDocs, deleteDoc, doc, onSnapshot, addDoc, query, where,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getStorage, ref, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -19,13 +19,15 @@ export default function AdminDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [lastOrderId, setLastOrderId] = useState(null);
+  const [hasRegisteredToken, setHasRegisteredToken] = useState(false);
   const storage = getStorage();
+  const soundRef = useRef(null);
 
-  // 🔔 Register for push notifications
+  // 🔔 Push Notification Registration
   useEffect(() => {
-    const register = async () => {
+    const registerForPushNotificationsAsync = async () => {
       if (!Device.isDevice) {
-        alert('Must use physical device for push notifications');
+        Alert.alert('Push notifications require a physical device');
         return;
       }
 
@@ -38,27 +40,39 @@ export default function AdminDashboardScreen() {
       }
 
       if (finalStatus !== 'granted') {
-        alert('Failed to get push notification permission');
+        Alert.alert('Permission denied for push notifications');
         return;
       }
 
       const tokenData = await Notifications.getExpoPushTokenAsync();
       const token = tokenData.data;
+      console.log('Expo Push Token:', token);
 
-      if (token) {
-        try {
+      if (!hasRegisteredToken) {
+        // Prevent duplicate tokens
+        const q = query(collection(db, 'adminTokens'), where('token', '==', token));
+        const existing = await getDocs(q);
+
+        if (existing.empty) {
           await addDoc(collection(db, 'adminTokens'), {
             token,
             createdAt: new Date(),
           });
-        } catch (err) {
-          console.error('Saving token failed:', err);
         }
+        setHasRegisteredToken(true);
+      }
+
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: 'telephone-ring.wav', // must match your asset name
+        });
       }
     };
 
-    register();
-  }, []);
+    registerForPushNotificationsAsync();
+  }, [hasRegisteredToken]);
 
   // 🔁 Listen for new orders and play bell
   useEffect(() => {
@@ -80,10 +94,17 @@ export default function AdminDashboardScreen() {
   // 🔊 Bell Sound
   const playBell = async () => {
     try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+
       const { sound } = await Audio.Sound.createAsync(
         require('../assets/telephone-ring.wav')
       );
+      soundRef.current = sound;
       await sound.playAsync();
+
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.didJustFinish) {
           sound.unloadAsync();
@@ -93,6 +114,18 @@ export default function AdminDashboardScreen() {
       console.error('Bell play failed:', err);
     }
   };
+
+  // 🛒 Navigate on Notification Tap
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const screen = response.notification.request.content.data.screen;
+      if (screen) {
+        navigation.navigate(screen);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   // 📦 Fetch menu items
   const fetchMenuItems = async () => {
