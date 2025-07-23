@@ -1,55 +1,100 @@
-import React, { useEffect,useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
-import { collection, onSnapshot, orderBy, query, doc, updateDoc } from 'firebase/firestore';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native';
+import { collection, onSnapshot, orderBy, query, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import * as Notifications from 'expo-notifications';
-import { useNavigation } from '@react-navigation/native';
+import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import { useNavigation } from '@react-navigation/native';
+import { playBell, stopBell } from '../utils/bell';
 
-  export default function AdminScreen() {
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+export default function AdminScreen() {
   const [orders, setOrders] = useState([]);
   const navigation = useNavigation();
-  const lastNotifiedId = useRef(null); // 🔸 This remembers last notified order
 
   useEffect(() => {
-  const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    registerForPushNotifications();
 
-  const unsubscribe = onSnapshot(q, async (snapshot) => {
-    const newOrders = snapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(order => order.status !== 'done' && order.status !== 'rejected');
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const newOrders = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(order => order.status !== 'done' && order.status !== 'rejected');
 
-    setOrders(newOrders);
+      setOrders(newOrders);
 
-    const latestChange = snapshot.docChanges().find(change => change.type === 'added');
-    if (latestChange) {
-      const order = latestChange.doc.data();
-      const orderId = latestChange.doc.id;
+      const latestChange = snapshot.docChanges().find(change => change.type === 'added');
+      if (latestChange) {
+        const order = latestChange.doc.data();
+        const orderId = latestChange.doc.id;
 
-      // 🔸 Check persistent notification history
-      const notifiedIdsJSON = await AsyncStorage.getItem('notifiedOrders');
-      const notifiedIds = notifiedIdsJSON ? JSON.parse(notifiedIdsJSON) : [];
+        const notifiedIdsJSON = await AsyncStorage.getItem('notifiedOrders');
+        const notifiedIds = notifiedIdsJSON ? JSON.parse(notifiedIdsJSON) : [];
 
-      if (!notifiedIds.includes(orderId)) {
-        // 🔔 Send notification
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '🛎️ New Order!',
-            body: `From: ${order.name} | ${order.item.name} x${order.qty} | ₹${order.total}`,
-            sound: 'default',
-          },
-          trigger: null,
-        });
+        if (!notifiedIds.includes(orderId)) {
+          await playBell(); // 🔔 Start ringing
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '🛎️ New Order!',
+              body: `From: ${order.name} | ${order.item.name} x${order.qty} | ₹${order.total}`,
+              sound: 'default',
+              data: { screen: 'AdminOrders' },
+            },
+            trigger: null,
+          });
+          await stopBell(); // 🔕 Stop ringing
 
-        // ✅ Mark as notified
-        const updatedIds = [...notifiedIds, orderId];
-        await AsyncStorage.setItem('notifiedOrders', JSON.stringify(updatedIds));
+          const updatedIds = [...notifiedIds, orderId];
+          await AsyncStorage.setItem('notifiedOrders', JSON.stringify(updatedIds));
+        }
       }
-    }
-  });
+    });
 
-  return () => unsubscribe();
-}, []);
+    return () => unsubscribe();
+  }, []);
+
+  const registerForPushNotifications = async () => {
+    if (!Device.isDevice) {
+      alert('Must use physical device for push notifications');
+      return;
+    }
+
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') {
+      alert('Failed to get push token for push notification!');
+      return;
+    }
+
+    const token = (await Notifications.getExpoPushTokenAsync({
+      projectId: Constants.expoConfig.extra.eas.projectId,
+    })).data;
+
+    await setDoc(doc(db, 'adminTokens', token), { token });
+
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'default', // change to 'telephone-ring.wav' if needed
+      });
+    }
+  };
 
   const handleAccept = async (orderId) => {
     try {
@@ -62,16 +107,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
   };
 
   const handleReject = async (orderId) => {
-  try {
-    await updateDoc(doc(db, 'orders', orderId), { status: 'rejected' });
-    setOrders(prev => prev.filter(order => order.id !== orderId)); // 🔸 Remove rejected order from state
-    alert(`Order ${orderId} rejected`);
-  } catch (err) {
-    console.error(err);
-    alert('Failed to reject order');
-  }
-};
-
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { status: 'rejected' });
+      setOrders(prev => prev.filter(order => order.id !== orderId));
+      alert(`Order ${orderId} rejected`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to reject order');
+    }
+  };
 
   const handleDone = async (orderId) => {
     try {
@@ -87,10 +131,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>📋 Orders</Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('AdminDashboard')}
-          style={styles.dashboardBtn}
-        >
+        <TouchableOpacity onPress={() => navigation.navigate('AdminDashboard')} style={styles.dashboardBtn}>
           <Text style={styles.dashboardText}>Dashboard</Text>
         </TouchableOpacity>
       </View>
@@ -110,31 +151,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
                 <Text style={styles.badgeText}>{item.status || 'pending'}</Text>
               </View>
             </View>
-
             <Text style={styles.detail}>🍽️ {item.item.name} x{item.qty}</Text>
             <Text style={styles.detail}>📍 {item.address}</Text>
             <Text style={styles.detail}>💳 {item.paymentMethod}</Text>
             <Text style={styles.total}>💰 ₹{item.total}</Text>
 
             {item.status === 'accepted' ? (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.doneButton]}
-                onPress={() => handleDone(item.id)}
-              >
+              <TouchableOpacity style={[styles.actionButton, styles.doneButton]} onPress={() => handleDone(item.id)}>
                 <Text style={styles.buttonText}>Mark as Done</Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.acceptButton]}
-                  onPress={() => handleAccept(item.id)}
-                >
+                <TouchableOpacity style={[styles.actionButton, styles.acceptButton]} onPress={() => handleAccept(item.id)}>
                   <Text style={styles.buttonText}>Accept</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.rejectButton]}
-                  onPress={() => handleReject(item.id)}
-                >
+                <TouchableOpacity style={[styles.actionButton, styles.rejectButton]} onPress={() => handleReject(item.id)}>
                   <Text style={styles.buttonText}>Reject</Text>
                 </TouchableOpacity>
               </View>
@@ -154,94 +185,37 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#FFF8F0' },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop:20,
-    marginBottom: 20,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: 20, marginBottom: 20,
   },
-  header: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333',
-  },
+  header: { fontSize: 26, fontWeight: 'bold', color: '#333' },
   dashboardBtn: {
-    backgroundColor: '#FF7043',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    elevation: 3,
+    backgroundColor: '#FF7043', paddingVertical: 8, paddingHorizontal: 16,
+    borderRadius: 20, elevation: 3,
   },
-  dashboardText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
+  dashboardText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   orderCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-    elevation: 4,
+    backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 15,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6, elevation: 4,
   },
   cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
+    flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10,
   },
   customer: { fontWeight: 'bold', fontSize: 16, color: '#444' },
   detail: { fontSize: 14, color: '#555', marginVertical: 2 },
   total: { fontSize: 16, fontWeight: 'bold', color: '#000', marginTop: 6 },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 14,
-  },
+  buttonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
   actionButton: {
-    flex: 0.48,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    elevation: 2,
+    flex: 0.48, paddingVertical: 12, borderRadius: 12, alignItems: 'center', elevation: 2,
   },
-  acceptButton: {
-    backgroundColor: '#4CAF50',
-  },
-  rejectButton: {
-    backgroundColor: '#F44336',
-  },
-  doneButton: {
-    backgroundColor: '#2196F3',
-    marginTop: 12,
-    borderRadius: 12,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  statusBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    textTransform: 'capitalize',
-    color: '#fff',
-  },
-  badgeAccepted: {
-    backgroundColor: '#4CAF50',
-  },
-  badgeRejected: {
-    backgroundColor: '#F44336',
-  },
-  badgePending: {
-    backgroundColor: '#FFC107',
-  },
+  acceptButton: { backgroundColor: '#4CAF50' },
+  rejectButton: { backgroundColor: '#F44336' },
+  doneButton: { backgroundColor: '#2196F3', marginTop: 12, borderRadius: 12 },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  statusBadge: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 12 },
+  badgeText: { fontSize: 12, fontWeight: 'bold', textTransform: 'capitalize', color: '#fff' },
+  badgeAccepted: { backgroundColor: '#4CAF50' },
+  badgeRejected: { backgroundColor: '#F44336' },
+  badgePending: { backgroundColor: '#FFC107' },
 });

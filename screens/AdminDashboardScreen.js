@@ -20,10 +20,10 @@ export default function AdminDashboardScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [lastOrderId, setLastOrderId] = useState(null);
   const [hasRegisteredToken, setHasRegisteredToken] = useState(false);
-  const storage = getStorage();
   const soundRef = useRef(null);
+  const storage = getStorage();
 
-  // 🔔 Push Notification Registration
+  // 🔔 Register push notifications
   useEffect(() => {
     const registerForPushNotificationsAsync = async () => {
       if (!Device.isDevice) {
@@ -49,10 +49,8 @@ export default function AdminDashboardScreen() {
       console.log('Expo Push Token:', token);
 
       if (!hasRegisteredToken) {
-        // Prevent duplicate tokens
         const q = query(collection(db, 'adminTokens'), where('token', '==', token));
         const existing = await getDocs(q);
-
         if (existing.empty) {
           await addDoc(collection(db, 'adminTokens'), {
             token,
@@ -66,7 +64,7 @@ export default function AdminDashboardScreen() {
         await Notifications.setNotificationChannelAsync('default', {
           name: 'default',
           importance: Notifications.AndroidImportance.MAX,
-          sound: 'telephone-ring.wav', // must match your asset name
+          sound: 'telephone-ring.wav',
         });
       }
     };
@@ -74,11 +72,10 @@ export default function AdminDashboardScreen() {
     registerForPushNotificationsAsync();
   }, [hasRegisteredToken]);
 
-  // 🔁 Listen for new orders and play bell
+  // 🔁 Listen to new orders
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'orders'), async (snapshot) => {
       const added = snapshot.docChanges().filter(change => change.type === 'added');
-
       if (added.length > 0) {
         const latest = added[0].doc;
         if (!lastOrderId || latest.id !== lastOrderId) {
@@ -91,7 +88,7 @@ export default function AdminDashboardScreen() {
     return () => unsubscribe();
   }, [lastOrderId]);
 
-  // 🔊 Bell Sound
+  // 🔊 Play/stop bell
   const playBell = async () => {
     try {
       if (soundRef.current) {
@@ -100,22 +97,38 @@ export default function AdminDashboardScreen() {
       }
 
       const { sound } = await Audio.Sound.createAsync(
-        require('../assets/telephone-ring.wav')
+        require('../assets/telephone-ring.wav'),
+        { isLooping: true }
       );
+
       soundRef.current = sound;
       await sound.playAsync();
-
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          sound.unloadAsync();
-        }
-      });
     } catch (err) {
       console.error('Bell play failed:', err);
     }
   };
 
-  // 🛒 Navigate on Notification Tap
+  const stopBell = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    } catch (err) {
+      console.error('Stopping bell failed:', err);
+    }
+  };
+
+  // 🔕 Stop bell when navigating to Orders screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      stopBell();
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  // 🔁 Navigate on tap
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const screen = response.notification.request.content.data.screen;
@@ -184,6 +197,10 @@ export default function AdminDashboardScreen() {
     ]);
   };
 
+  const filteredItems = items.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const renderItem = ({ item }) => (
     <View style={styles.card}>
       <Image source={{ uri: item.imageUrl }} style={styles.image} />
@@ -209,10 +226,6 @@ export default function AdminDashboardScreen() {
         </TouchableOpacity>
       </View>
     </View>
-  );
-
-  const filteredItems = items.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (loading) {

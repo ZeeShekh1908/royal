@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const fetch = require('node-fetch');
 
 admin.initializeApp();
 
@@ -8,39 +9,32 @@ exports.sendNewOrderNotification = functions.firestore
   .onCreate(async (snap, context) => {
     const newOrder = snap.data();
 
+    // Get all Expo push tokens of admins
     const tokensSnapshot = await admin.firestore().collection('adminTokens').get();
     const tokens = tokensSnapshot.docs.map(doc => doc.data().token).filter(Boolean);
 
     if (tokens.length === 0) return;
 
-    const message = {
-      notification: {
-        title: '🛒 New Order Placed',
+    // Define the function to send notification via Expo
+    const sendPushNotification = async (expoPushToken) => {
+      const message = {
+        to: expoPushToken,
+        sound: 'telephone-ring.wav', // custom sound from app.json
+        title: '🛒 New Order',
         body: `Order from ${newOrder?.userName || 'a user'}`,
-      },
-      data: {
-        screen: 'AdminOrders',
-      },
-      android: {
-        notification: {
-          sound: 'telephone-ring.wav', // ✅ use custom sound if added in app.json
-          channelId: 'default',        // ✅ ensure a channel is configured on client
+        data: { screen: 'AdminOrders' },
+      };
+
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
         },
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'telephone-ring.wav', // ✅ custom sound for iOS
-          },
-        },
-      },
-      tokens,
+        body: JSON.stringify(message),
+      });
     };
 
-    try {
-      const response = await admin.messaging().sendMulticast(message);
-      console.log(`✅ Sent to ${response.successCount} devices, ${response.failureCount} failures`);
-    } catch (err) {
-      console.error('❌ Error sending push:', err);
-    }
+    // Send to all tokens
+    await Promise.all(tokens.map(sendPushNotification));
   });
