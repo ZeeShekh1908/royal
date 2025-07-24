@@ -31,6 +31,9 @@ export default function AdminScreen() {
         .filter(order => order.status !== 'done' && order.status !== 'rejected');
 
       setOrders(newOrders);
+      if (newOrders.length === 0) {
+  await stopBell(); // if there are no active orders, stop the bell
+}
 
       const latestChange = snapshot.docChanges().find(change => change.type === 'added');
       if (latestChange) {
@@ -51,7 +54,7 @@ export default function AdminScreen() {
             },
             trigger: null,
           });
-          await stopBell(); // 🔕 Stop ringing
+          
 
           const updatedIds = [...notifiedIds, orderId];
           await AsyncStorage.setItem('notifiedOrders', JSON.stringify(updatedIds));
@@ -97,25 +100,28 @@ export default function AdminScreen() {
   };
 
   const handleAccept = async (orderId) => {
-    try {
-      await updateDoc(doc(db, 'orders', orderId), { status: 'accepted' });
-      alert(`Order ${orderId} accepted`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to accept order');
-    }
-  };
+  try {
+    await updateDoc(doc(db, 'orders', orderId), { status: 'accepted' });
+    await stopBell(); // 🛑 stop bell only here
+    alert(`Order ${orderId} accepted`);
+  } catch (err) {
+    console.error(err);
+    alert('Failed to accept order');
+  }
+};
 
-  const handleReject = async (orderId) => {
-    try {
-      await updateDoc(doc(db, 'orders', orderId), { status: 'rejected' });
-      setOrders(prev => prev.filter(order => order.id !== orderId));
-      alert(`Order ${orderId} rejected`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to reject order');
-    }
-  };
+const handleReject = async (orderId) => {
+  try {
+    await updateDoc(doc(db, 'orders', orderId), { status: 'rejected' });
+    await stopBell(); // 🛑 stop bell only here
+    setOrders(prev => prev.filter(order => order.id !== orderId));
+    alert(`Order ${orderId} rejected`);
+  } catch (err) {
+    console.error(err);
+    alert('Failed to reject order');
+  }
+};
+
 
   const handleDone = async (orderId) => {
     try {

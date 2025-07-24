@@ -13,13 +13,17 @@
       "backgroundColor": "#ffffff"
     },
     "notification": {
-      "sounds": ["telephone-ring.wav"]
+      "icon": "./assets/menu/logo.png",
+      "color": "#FF7043",
+      "sounds": ["telephone-ring.wav"],
+      "androidMode": "default",
+      "androidCollapsedTitle": "New Order"
     },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload images.",
-        "UIBackgroundModes": ["remote-notification"]  
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
