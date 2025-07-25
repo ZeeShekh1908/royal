@@ -72,21 +72,21 @@ export default function AdminDashboardScreen() {
     registerForPushNotificationsAsync();
   }, [hasRegisteredToken]);
 
-  // 🔁 Listen to new orders
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'orders'), async (snapshot) => {
-      const added = snapshot.docChanges().filter(change => change.type === 'added');
-      if (added.length > 0) {
-        const latest = added[0].doc;
-        if (!lastOrderId || latest.id !== lastOrderId) {
-          await playBell();
-          setLastOrderId(latest.id);
-        }
-      }
-    });
+  // // 🔁 Listen to new orders
+  // useEffect(() => {
+  //   const unsubscribe = onSnapshot(collection(db, 'orders'), async (snapshot) => {
+  //     const added = snapshot.docChanges().filter(change => change.type === 'added');
+  //     if (added.length > 0) {
+  //       const latest = added[0].doc;
+  //       if (!lastOrderId || latest.id !== lastOrderId) {
+  //         await playBell();
+  //         setLastOrderId(latest.id);
+  //       }
+  //     }
+  //   });
 
-    return () => unsubscribe();
-  }, [lastOrderId]);
+  //   return () => unsubscribe();
+  // }, [lastOrderId]);
 
   // 🔊 Play/stop bell
   const playBell = async () => {
@@ -129,16 +129,32 @@ export default function AdminDashboardScreen() {
   }, [navigation]);
 
   // 🔁 Navigate on tap
-  useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
-      const screen = response.notification.request.content.data.screen;
-      if (screen) {
-        navigation.navigate(screen);
-      }
-    });
+  // 🔔 Handle foreground + background notifications
+useEffect(() => {
+  const notificationReceived = Notifications.addNotificationReceivedListener(async (notification) => {
+    // This triggers in foreground
+    if (notification?.request?.content?.title?.includes('Order')) {
+      await playBell();
+    }
+  });
 
-    return () => subscription.remove();
-  }, []);
+  const notificationTapped = Notifications.addNotificationResponseReceivedListener(async (response) => {
+    const screen = response.notification.request.content.data?.screen;
+
+    if (response.notification.request.content?.title?.includes('Order')) {
+      await playBell();
+    }
+
+    if (screen) {
+      navigation.navigate(screen);
+    }
+  });
+
+  return () => {
+    notificationReceived.remove();
+    notificationTapped.remove();
+  };
+}, []);
 
   // 📦 Fetch menu items
   const fetchMenuItems = async () => {

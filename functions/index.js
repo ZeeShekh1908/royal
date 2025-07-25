@@ -19,11 +19,12 @@ exports.sendNewOrderNotification = functions.firestore
         body: `Order from ${newOrder?.userName || 'a user'}`,
       },
       data: {
-        screen: 'AdminOrders', // optional, for navigation
+        screen: 'AdminOrders',
       },
       android: {
         notification: {
           sound: 'telephone-ring.wav',
+          channelId: 'default', // ✅ Add this line
         },
       },
       apns: {
